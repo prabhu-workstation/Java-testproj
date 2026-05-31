@@ -1,6 +1,6 @@
 pipeline {
 
-    agent { label 'agent-1' }
+    agent any
 
     environment {
         DOCKER_IMAGE = "prabhuworkstation/java-testproj"
