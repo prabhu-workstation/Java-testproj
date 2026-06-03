@@ -1,3 +1,16 @@
+def deploycontainer(imagename) {
+
+    sh """
+    docker stop java-app || true
+    docker rm java-app || true
+
+    docker run -d \
+    --name java-app \
+    -p 8080:8080 \
+    ${imagename}
+    """
+}
+
 pipeline {
 
     agent any
@@ -16,7 +29,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                url: 'https://github.com/prabhu-workstation/Java-testproj.git'
+                    url: 'https://github.com/prabhu-workstation/Java-testproj.git'
             }
         }
 
@@ -29,9 +42,18 @@ pipeline {
         stage('SonarQube Scan') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonar-token',
+                            variable: 'SONAR_TOKEN'
+                        )
+                    ]) {
+
                         sh """
-                        mvn sonar:sonar -Dsonar.projectKey=Java-testproj -Dsonar.host.url=http://100.53.115.42:9000 -Dsonar.login=${SONAR_TOKEN}
+                        mvn sonar:sonar \
+                        -Dsonar.projectKey=Java-testproj \
+                        -Dsonar.host.url=http://100.53.115.42:9000 \
+                        -Dsonar.login=${SONAR_TOKEN}
                         """
                     }
                 }
@@ -44,15 +66,32 @@ pipeline {
             }
         }
 
+        stage('Docker Image Scan') {
+            steps {
+                sh '''
+                trivy image \
+                --severity CRITICAL,HIGH \
+                --exit-code 1 \
+                $DOCKER_IMAGE:$DOCKER_TAG
+                '''
+            }
+        }
+
         stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'd84391c1-752b-47bd-a3ed-34d34ec3742d',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'd84391c1-752b-47bd-a3ed-34d34ec3742d',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
 
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh '''
+                    echo $DOCKER_PASS | docker login \
+                    -u $DOCKER_USER \
+                    --password-stdin
+                    '''
                 }
             }
         }
@@ -63,18 +102,56 @@ pipeline {
             }
         }
 
+        stage('Backup Current Version') {
+            steps {
+                sh '''
+                docker inspect java-app \
+                --format='{{.Config.Image}}' \
+                > previous-image.txt || true
+                '''
+            }
+        }
+
         stage('Deploy Container') {
             steps {
+                script {
+                    deploycontainer("${DOCKER_IMAGE}:${DOCKER_TAG}")
+                }
+            }
+        }
 
-                sh '''
-                docker stop java-app || true
-                docker rm java-app || true
+        stage('Health Check') {
+            steps {
+                script {
 
-                docker run -d \
-                --name java-app \
-                -p 8080:8080 \
-                $DOCKER_IMAGE:$DOCKER_TAG
-                '''
+                    def status = sh(
+                        script: '''
+                        sleep 30
+                        curl -f \
+                        http://localhost:8080/actuator/health
+                        ''',
+                        returnStatus: true
+                    )
+
+                    if (status != 0) {
+
+                        echo "Health Check Failed"
+                        echo "Starting Rollback..."
+
+                        def previousImage = sh(
+                            script: "cat previous-image.txt",
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Rollback Image: ${previousImage}"
+
+                        deploycontainer(previousImage)
+
+                        error("Rollback completed")
+                    }
+
+                    echo "Health Check Passed"
+                }
             }
         }
     }
