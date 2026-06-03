@@ -42,18 +42,9 @@ pipeline {
         stage('SonarQube Scan') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    withCredentials([
-                        string(
-                            credentialsId: 'sonar-token',
-                            variable: 'SONAR_TOKEN'
-                        )
-                    ]) {
-
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                         sh """
-                        mvn sonar:sonar \
-                        -Dsonar.projectKey=Java-testproj \
-                        -Dsonar.host.url=http://100.53.115.42:9000 \
-                        -Dsonar.login=${SONAR_TOKEN}
+                        mvn sonar:sonar Dsonar.projectKey=Java-testproj Dsonar.host.url=http://3.87.158.94/:9000 Dsonar.login=${SONAR_TOKEN}
                         """
                     }
                 }
@@ -69,10 +60,7 @@ pipeline {
         stage('Docker Image Scan') {
             steps {
                 sh '''
-                trivy image \
-                --severity CRITICAL,HIGH \
-                --exit-code 1 \
-                $DOCKER_IMAGE:$DOCKER_TAG
+                trivy image severity CRITICAL,HIGH exit-code 1 $DOCKER_IMAGE:$DOCKER_TAG
                 '''
             }
         }
