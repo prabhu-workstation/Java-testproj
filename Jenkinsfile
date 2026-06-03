@@ -44,7 +44,7 @@ pipeline {
                 withSonarQubeEnv('SonarQube') {
                     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                         sh """
-                        mvn sonar:sonar Dsonar.projectKey=Java-testproj Dsonar.host.url=http://3.87.158.94:9000 Dsonar.login=${SONAR_TOKEN}
+                        mvn sonar:sonar -Dsonar.projectKey=Java-testproj -Dsonar.host.url=http://3.87.158.94:9000 -Dsonar.login=${SONAR_TOKEN}
                         """
                     }
                 }
